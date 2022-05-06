@@ -1,13 +1,15 @@
-library(tidyverse)
-library(here)
-source('R_scripts/emb_funcs.R')
+.script.dir <- dirname(sys.frame(1)$ofile)
+setwd(.script.dir)
 
-vocab_data = load_vocab_emb('./logs/com/vocab_emb_com.txt', './logs/com/lexicon_com.csv',
+library(tidyverse)
+source('emb_funcs.R')
+
+vocab_data = load_vocab_emb('../logs/com/vocab_emb_com.txt', '../logs/com/lexicon_com.csv',
                             vocab_only=F, english_only=T)
 vocab_emb = vocab_data$vocab_emb
 interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
 
-data = read_csv('./Data/efw_cc.csv') %>% na.exclude()
+data = read_csv('../Data/efw_cc.csv') %>% na.exclude()
 summary(data)
 
 # select only columns which are known members of more abstract columns
@@ -49,8 +51,12 @@ simplify_df = function(vocab_emb, df, rank) {
   colnames(colname_dtm) = rownames(vocab_emb)
   in_vocab_mask = colname_vocab %>% map(~all(.x %in% vocab)) %>% as_vector()
   if (!all(in_vocab_mask)) warning(c('not in vocab: ', colnames(df)[!in_vocab_mask]))
-  colname_vocab %>% map(~table(.x)) %>% walk2(1:nrow(colname_dtm), ~{colname_dtm[.y,names(.x)]=.x})
-   
+  
+  # NOTE: global assignment operator is necessary! You should switch back from = assignment to <- assignment
+  colname_vocab %>% map(table) %>% walk2(1:nrow(colname_dtm), ~{colname_dtm[.y,names(.x)] <<- .x})
+  stopifnot(any(colname_dtm>0))
+  print(any(colname_dtm>1))
+  
   # same format as vocab embeddings
   colname_emb = colname_dtm %*% vocab_emb
   rownames(colname_emb) = colnames(df)
@@ -58,11 +64,10 @@ simplify_df = function(vocab_emb, df, rank) {
   # PC_names = get_PC_names(interp_col_emb)
   # PC_names = t(t(colname_emb) %*% interp_col_emb %*% PC_names)
   # rownames(PC_names) = embed(PC_names, vocab_emb, reverse=T)
-  
-  colname_vocab = colname_vocab %>% as_vector() %>% unique()
 
   # here colname_emb takes place of vocab_emb
   # and t(PCA$rotation)=W
+  # colname_vocab = colname_vocab %>% as_vector() %>% unique()
   #vocab_emb = vocab_emb[rownames(vocab_emb) %in% colname_vocab,]
   PC_names = get_PC_names(colname_emb, vocab_emb = vocab_emb,
                           emb_weights=t(interp_col_emb))
@@ -77,13 +82,13 @@ simplify_df = function(vocab_emb, df, rank) {
 }
 
 (simple_df = simplify_df(vocab_emb, verbose_data, rank=5))
-
-# TODO: make this more expressive
-main_PCs = simple_df[,1:2]
-plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
-     xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
-
-cor(simple_df, abstract_data)
-
-data = read_csv('~/Downloads/housing.csv') %>% clean_data()
-simple_df = simplify_df(vocab_emb, data, rank=5)
+# 
+# # TODO: make this more expressive
+# main_PCs = simple_df[,1:2]
+# plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
+#      xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
+# 
+# cor(simple_df, abstract_data)
+# 
+# data = read_csv('~/Downloads/housing.csv') %>% clean_data()
+# simple_df = simplify_df(vocab_emb, data, rank=5)

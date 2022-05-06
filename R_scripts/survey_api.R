@@ -1,8 +1,9 @@
+.script.dir <- dirname(sys.frame(1)$ofile)
+setwd(.script.dir)
+source('emb_funcs.R')
+
 library(tidyverse)
 library(qdapDictionaries)
-library(factoextra)
-library(here)
-source(here('R_scripts/emb_funcs.R'))
 
 get_integrous_PC_order = function(important_part_idx) {
   # incoherence measures how far the original indices were pushed back in order to be valid.
@@ -69,15 +70,6 @@ generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
   important_parts = important_parts_idx %>% map(~intersect(.x, clean)) %>% #walk(~print(c('remaining indices: ',.x))) %>% 
     map(~vocab[.x[1:n_parts]])
   
-  
-  # if (!is.null(names(important_parts))) {
-  #   part_emb = important_parts %>% map2(names(important_parts), ~embed(c(.y, .x), vocab_emb))
-  #   mean_group_sim = part_emb %>% map(~mean(.x%*%t(.x))) %>% as_vector() %>% as.numeric
-  #   hist(mean_group_sim)
-  #   
-  #   part_emb %>% map(~mean(.x[-1,]%*%.x[1,])) %>% as_vector %>% hist(main='mean group to name sim')
-  # }
-  
   return(important_parts)
 }
 
@@ -97,7 +89,7 @@ display_important_parts = function(important_parts, lexicon,  num=10, use_defini
   answer_key = NULL
   question_id = 1
   for (i in sample_ids) {
-    cat(question_id,'. ')
+    cat(question_id, '. ')
     question_id = question_id + 1
     
     n = length(important_parts[[i]])
@@ -143,7 +135,7 @@ display_important_parts = function(important_parts, lexicon,  num=10, use_defini
 # to simplify to embeddings in hopes that the resulting parts will be more 
 # easily categorizable by humans.
 do_name_survey = function(vocab_emb, lexicon=rownames(vocab_emb),
-                          n_centers=10, n_questions=10, interactive=T, use_definitions=T) {
+                          n_centers=1, n_questions=10, interactive=T, use_definitions=T) {
   # clusters = hclust(dist(vocab_emb[sample_ids,]))
   # plot(clusters)  # seems like 10-13 clusters is ideal
   
@@ -160,10 +152,8 @@ do_name_survey = function(vocab_emb, lexicon=rownames(vocab_emb),
     attr(vocab_emb_cluster, 'abs_scores') = attr(vocab_emb, 'abs_scores')
     
     if (rank < dim(vocab_emb)[2]) {
-      stop()
       PCA = prcomp(vocab_emb_cluster, rank=rank)
       reduced_embs = get_vocab_emb(PCA, rank, term_mat = 'emb')
-      #plot(PCA)
     } else {
       reduced_embs = vocab_emb_cluster
     }
@@ -192,6 +182,3 @@ do_name_survey = function(vocab_emb, lexicon=rownames(vocab_emb),
     print(c('answer key:', results$answer_key))
   }
 }
-
-# vocab_emb %>% add_abstractness_scores() %>% do_name_survey(lexicon, n_centers=1, interactive=T)
-#source('./R_scripts/russ_emb_test.R')

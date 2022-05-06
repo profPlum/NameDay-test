@@ -1,5 +1,8 @@
+.script.dir <- dirname(sys.frame(1)$ofile)
+setwd(.script.dir)
+
 library(tidyverse)
-data = read_csv('~/PycharmProjects/wordEmbeddings/logs/correlation_testA_rps.csv') %>% 
+data = read_csv('./paper_data/correlation_testA_rps.csv') %>% 
   select(-index)
 
 summary(data)

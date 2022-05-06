@@ -4,7 +4,6 @@ library(tidyverse)
 library(qdapDictionaries)
 library(moments)
 library(here)
-library(ggpubr)
 
 generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
                               english_only=F, low_freq_only=F) {
@@ -56,15 +55,6 @@ generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
   important_parts = important_parts_idx %>% map(~intersect(.x, clean)) %>% #walk(~print(c('remaining indices: ',.x))) %>% 
     map(~vocab[.x[1:n_parts]])
   
-  
-  # if (!is.null(names(important_parts))) {
-  #   part_emb = important_parts %>% map2(names(important_parts), ~embed(c(.y, .x), vocab_emb))
-  #   mean_group_sim = part_emb %>% map(~mean(.x%*%t(.x))) %>% as_vector() %>% as.numeric
-  #   hist(mean_group_sim)
-  #   
-  #   part_emb %>% map(~mean(.x[-1,]%*%.x[1,])) %>% as_vector %>% hist(main='mean group to name sim')
-  # }
-  
   return(important_parts)
 }
 
@@ -111,15 +101,15 @@ cos_sim_diff = function(V, O, sample_sz=200) {
   ids = sample(dim(V)[1], sample_sz)
   O = norm_emb(O[ids,])
   V = V[ids,]
-
+  
   n_plot = 10
-  cos_sims_V = cos_sim_plot(V, n_plot, 'Before H Transform')
-  cos_sims_O <- cos_sim_plot(O, n_plot, 'After H Transform')
+  cos_sims_V = cos_sim_plot(V, n_plot)
+  cos_sims_O <- cos_sim_plot(O, n_plot)
   
   cos_sim_differences = cos_sims_O - cos_sims_V
   dim(cos_sim_differences) = NULL
   ##hist(cos_sim_differences)
-  boxplot(cos_sim_differences, main='Cosine Similarity Differences')
+  boxplot(cos_sim_differences)
   return(mean(abs(cos_sim_differences)))
 }
 
@@ -142,17 +132,16 @@ topn_similar = function(vocab_emb, words, n=10) {
 
 image.real = function(mat, main=NULL) image(t(mat)[,nrow(mat):1], main=main)
 
-compare_interp_scores = function(vocab_emb, dtm=NULL) {
-  russ_interp = vocab_emb %>% get_PC_interp_scores()
-  std_interp = standard_interp_scores(vocab_emb, dtm=dtm)
-  cat('Mean Zobnin score: ', mean(russ_interp), 'Mean Standard score:', mean(std_interp), '\n')
-  cat('Median Zobnin score: ', median(russ_interp), 'Median Standard score:', median(std_interp), '\n')
-  boxplot(russ_interp, main='Zobnin Interpretability')
-  boxplot(std_interp, main='Standard Interpretability')
-  cat("Score correlation: ", cor(russ_interp, std_interp), '\n')
-  return(invisible(lst(russ_interp, std_interp)))
+compare_interp_scores = function(vocab_emb,  dtm=NULL) {
+  Zobnin_interpretability = vocab_emb %>% get_PC_interp_scores()
+  Standard_interpretability = standard_interp_scores(vocab_emb, dtm=dtm)
+  cat('Mean Zobnin score: ', mean(Zobnin_interpretability), 'Mean Standard score:', mean(Standard_interpretability), '\n')
+  cat('Median Zobnin score: ', median(Zobnin_interpretability), 'Median Standard score:', median(Standard_interpretability), '\n')
+  # boxplot(russ_interp, main='Zobnin Interpretability')
+  # boxplot(std_interp, main='Standard Interpretability')
+  cat("Score correlation: ", cor(Zobnin_interpretability, Standard_interpretability), '\n')
+  return(invisible(lst(Zobnin_interpretability, Standard_interpretability)))
 }
-
 add_abstractness_scores = function(vocab_emb,
                                    sim_mat = vocab_emb%*%t(vocab_emb)) {
   abs_scores = scale(apply(sim_mat, -1, skewness))

@@ -2,15 +2,22 @@
 title: "PC True Naming Algorithm"
 author: "Dwyer Deighan, Gokun Kul"
 date: "9/26/2020"
-output: pdf_document
+output: 
+  pdf_document:
+    keep_tex:  true
+bibliography: paper.bib
+header-includes:
+  - \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+options(tinytex.clean = FALSE)
+knitr::opts_chunk$set(echo = F, message=F)
+library(here)
 library(tidyverse)
-source('./emb_funcs.R')
+source(here('emb_funcs.R'))
 
-vocab_data = load_vocab_emb('../logs/com/vocab_emb_com.txt', '../logs/com/lexicon_com.csv', vocab_only=F, english_only=T)
+vocab_data = load_vocab_emb(here('paper_data/com/vocab_emb_com.txt'), here('paper_data/com/lexicon_com.csv'), vocab_only=F, english_only=T)
 vocab_emb = vocab_data$vocab_emb
 PC_names = get_PC_names(vocab_emb)
 colnames(vocab_emb) = rownames(PC_names)
@@ -19,7 +26,7 @@ interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
 interp_PC_names = get_PC_names(interp_vocab_emb)
 colnames(interp_vocab_emb) = rownames(interp_PC_names)
 
-data = read_csv('../data/efw_cc.csv') %>% na.exclude()
+data = read_csv(here('paper_data/efw_cc.csv')) %>% na.exclude()
 
 # select only columns which are known members of more abstract columns
 verbose_cols = grep('\\d[a-z]_', names(data))
@@ -30,39 +37,65 @@ abstract_data = data[,abstract_cols]
 # change names to a format that our algorithm can use
 names(verbose_data) = gsub('\\d[a-z]?_', '', names(verbose_data))
 names(verbose_data) = gsub('_', ' ', names(verbose_data))
+
+##### LOAD SURVEY DATA ##### 
+
+survey_data = read_csv('./paper_data/Word Set Naming Task.csv')
+survey_data = survey_data[-1,]
+
+answer_key = c("chagrin", "ascended", "unforeseen", "morgue", "jerome", "bliss",
+               "unearned", "grads", "reissue", "bosque", "commences", "entomology",
+               "flared", "argent", "daft", "horsepower",  "insurer", "raj", "yeh", 
+               "esplanade", "blacksmith", "dacia", "packer", "bushels", "couriers",
+               "keyword", "lander")
+
+q_ids = grep('\\d+ . ', colnames(survey_data))
+names(survey_data) = gsub('\\d+ . please name this set: ', '', names(survey_data))
+names(answer_key) = colnames(survey_data)[q_ids]
+
+long_data = survey_data %>% select(names(answer_key)) %>% pivot_longer(everything()) %>% rename(answer=value)
+answer_dist = long_data %>% group_by(name, answer) %>% summarise(n=n()) %>% ungroup %>%
+  mutate(correct=answer==answer_key[name]) %>% group_by(name, correct) %>%
+  mutate(rank=sort(n,decreasing=T,index.return=T)$ix) %>% ungroup %>% mutate(rank=as.integer(if_else(correct, 1, rank+1))) %>% 
+  rename(rank_correct_first=rank)
+
+# tie is when top answer is a toss up between correct answer & random answer
+answer_dist = answer_dist %>% group_by(name) %>% arrange(name, desc(n)) %>% mutate(rank=1:5) %>% mutate(tie=sum(n[correct]==n)>1) %>% ungroup
 ```
 
-<!-- TODO: add this to intro or background -->
-## Discussion of Russian & Problem Paper
-Two papers that heavily influenced this work were [1] and [2]. The first demonstrated that GloVE embeddings have little human interpretability at baseline (almost none), and that transforming the embedding space to define corresponding embedding dimension names could be done and was very useful for aligning with human intuition. However it relied heavily on a rare dataset called SEMCAT which was limited in scope, and therefore did not scale well. The other paper Rotations and Interpretability of Word Embeddings: the Case of the Russian Language, defined a very intuitive interpretability score $interp_k(V) = \sum V_{i,k}V_{j,k}(Vi ·Vj)=(V^TVV^TV)_{k,k}$ (note that V=W in their paper) and demonstrated its properties under orthogonal transformations. Their paper was very useful for deriving insights about the problem. And while we didn't use many of their equations directly they inspired some aspects of ours. 
+## Word Embedding Vectors Data:
+For our project we used 'glove-wiki-gigaword-50' pretrained embeddings which we downloaded from gensim's repo [@gensim]. And we cleaned it to include only the intersection of top 50,000 most frequent words from this dataset [@unigram-freq] and the [@GradyAugmented] dataset, this was to exclude any nonsense tokens which were interpreted by GloVe as real words. 
 
 ## True Naming Algorithm
 
 ### Setup & Assumptions:
 
-For simplicity we refer to the word2vec model architecture. Word2vec demonstrates a couple of important concepts about word embeddings:
+For simplicity we refer to the word2vec model architecture [@word2vec]. Word2vec demonstrates a couple of important concepts about word embeddings:
+
 1. 1 hidden layer is sufficient to make them.
-1. no activation function is necessary in that layer
-1. no biases are necessary in that layer
+1. No activation function is necessary in that layer.
+1. No biases are necessary in that layer.
 
-This means that word2vec (and presumably word embeddings in general) can be represented as a simple linear transformation, we will call $E$, to get the vocab embeddings which we will refer to as $V \in R^{m,n} s.t. ||V_i||_2=1, \forall i, 1 \le i \le m$ where n := emedding size, m = vocab size. Given that inputs are encoded in a simple one-hot format that means that $EI = V^T => E=V^T$.
+This means that word2vec (and presumably word embeddings in general) can be represented as a simple linear transformation, we will call $E$, to get the vocab embeddings which we will refer to as $V \subset R^{m,n} s.t. ||V_i||_2=1, \forall i, 1 \le i \le m$ where n := emedding size, m = vocab size. Given that inputs are encoded in a simple one-hot format that means that $EI = V^T \implies E=V^T$.
 
-Now we are going to define two vectors spaces each of which we assume has a (unique?) semantic meaning at each point and each of which we assume to be fully expressive of all possible semantic meanings and their corresponding words. The first is the vocab space $S_v \subset R^m$ where each axis is a word but has many redundant dimensions. The second is the word embedding space $S_e \subset R^n$ which has little to no redundant dimensions.
+Now we are going to define two vectors spaces each of which we assume has a semantic meaning associated with each point and each of which we assume to be fully expressive of all possible semantic meanings and their corresponding words. The first is the vocab space $S_v \equiv R^m$ where each axis vector encodes a word but has many redundant dimensions. The second is the word embedding space $S_e \equiv R^n$ which has little to no redundant dimensions.
 
 Additionally we are going to assume that each embedding dimension has a specific semantic meaning regardless of whether that meaning has a corresponding word and that these meanings are best represented in $S_e$, we will define the corresponding embeddings as $P\in R^{n,n} s.t. P_i \in S_e$.
 
 ### Proof of True Naming algorithm:
 
-Now observe that $V$ both fully expresses the coordinates of each $S_v$ axis in $S_e$ *and* the coordinates of each $S_e$ axis in $S_v$, along row and column dimensions respectively. Therefore we need only transform the coordinates of each $S_e$ axis in $S_v$ to the space $S_e$, i.e. $P=EV=V^TV$. This means that by definition when given a comprehensive set of vocab embeddings vectors we can directly derive the embeddings representing each embedding dimension for the corresponding vocab and embedding space.
+![True Naming Proof Digram](./figures/Core Proof Diagram.pdf)
+
+It is trivial to show that the columns of a matrix A are the coordinates of the axis vectors of the domain space of A represented in the range space of A, this is evident by $AI=A$ (particullary obvious when A is rectangular). And similarly the same is true for the row vectors except in regards to the domain space of A (this time represented in the range space), hence $A^TI=A^T$. Given that $Ex=V^Tx=y$ represents the transform from the vocab space to the embedding space: observe that $V$ both fully expresses the coordinates of each $S_v$ axis in $S_e$ *and* the coordinates of each $S_e$ axis in $S_v$, along row and column dimensions respectively. Therefore we need only transform the coordinates of each $S_e$ axis in $S_v$ to the space $S_e$, i.e. $P=EV=V^TV$. This means that by definition when given a comprehensive set of vocab embeddings vectors we can directly derive the embeddings representing each embedding dimension for the corresponding vocab and embedding space.
 
 ## Correlation Property
 It would also be intuitive and convenient if correlations of these embedding dimensions were reflected by the consine similarities of the derived dimension name embeddings $P$. Well it turns out on average that is true given some reasonable assumptions.
 
 ### Setup and Assumptions:
 
-1. First we assume that $E(V_i)=0$, this is a mostly reasonable assumption since we have no reason to assume it would be biased positive or negatively. We tested this assumption using student's t-test and found it to be nearly accurate $CI(E(V_i), 0.05) = [0.004989122, 0.005431173]$ for the vocab we were using and GloVe-wiki-50 pretrained embeddings[CITEME].
+1. First we assume that $E(V_i)=0$, this is a mostly reasonable assumption since we have no reason to assume that in general it would be biased positive or negatively. We tested this assumption using student's t-test and found it to be nearly accurate $CI(E(V_i), 0.05) = [0.004989122, 0.005431173]$ for the vocab we were using and 'glove-wiki-gigaword-50' pretrained embeddings which we downloaded from gensim's repo [@gensim].
 
-1. We make the naive assumption that the expected value of the random variables $\theta$ and is the center of its extreme values that is $0 \le \theta_{x,y} \le m \implies E(\theta_{x,y})=m/2 $. Since $E(\theta) = \int_0^m\theta P(\theta)d\theta$, we are in other words assuming the distribution of $\theta$ is uniform.
+1. We make the naive assumption that the expected value of the random variables $\theta$ and $C$ are the center of their extreme values that is $\forall R \in \{\theta_{x,y}, c\}: 0 \le R \le m \implies E(R)=m/2$. Since $E(\theta) = \int_0^mr P(R=r)dr$, we are in other words assuming that $\forall R \in \{\theta_{x,y}, c\}: skew(R)=0$. Note that statistically speaking these are valid null hypothesese, until we've seen significant evidence to the contrary.
 
 Also note we use the notation $\theta_{x,y}$ to denote the *minimum* angle between the vectors x and y (i.e. $0 \le \theta \le \pi$).
 
@@ -71,43 +104,88 @@ Also note we use the notation $\theta_{x,y}$ to denote the *minimum* angle betwe
 The equation for cosine similarity is: $cos(\theta_{x,y}) = (x^T*y)/||x||_2||y||_2$ 
 
 Lemma 1:
-The equation for pearson's correlation coeficient is $r(x,y) = (\sum_{i=1}^n(x_i - \bar x)(y_i - \bar y))/\sqrt{\sum_{i=1}^n(x_i - \bar x)^2}\sqrt{\sum_{i=1}^n(y_i - \bar y)^2}$, given our assumption that $E(V_i)=0 \implies \bar x=0, \bar y=0 \implies r(x,y) = (\sum_{i=1}^n(x_i)(y_i))/\sqrt{\sum_{i=1}^n(x_i)^2}\sqrt{\sum_{i=1}^n(y_i)^2} = (x^T*y)/||x||_2||y||_2 = cos(\theta_{x,y})$
+The equation for pearson's correlation coeficient for a sample is[@pearsons-r] $r(x,y) = (\sum_{i=1}^n(x_i - \bar x)(y_i - \bar y))/\sqrt{\sum_{i=1}^n(x_i - \bar x)^2}\sqrt{\sum_{i=1}^n(y_i - \bar y)^2}$, given our assumption that $E(V_i)=0 \implies \bar x=0, \bar y=0 \implies r(x,y) = (\sum_{i=1}^n(x_i)(y_i))/\sqrt{\sum_{i=1}^n(x_i)^2}\sqrt{\sum_{i=1}^n(y_i)^2} = (x^T*y)/||x||_2||y||_2 = cos(\theta_{x,y})$
 
 Lemma 2:
-Lemma 1: $\implies r(V_{*,i}, V_{*,j}) = (V_{*,i}^T*V_{*,j})/||V_{*,j}||_2||V_{*,i}||_2$
 $cos(\theta_{P_i,P_j}) = (P_i^T*P_j)/||P_i||_2||P_j||_2$
 $P_i = P_{*,i} = V^TV_{*,i}$
-$(P_i^T*P_j) = ((V^TV_{*,i})^T*V^TV_{*,j}) = ((V_{*,i}^TV)*V^TV_{*,j}) = (V_{*,j}^TV^T*VV_{*,i}) = V_{*,j}^TPV_{*,i}$ (i.e. new form for numerator)
+$(P_i^T*P_j)/||P_i||_2||P_j||_2 = ((V^TV_{*,i})^T*V^TV_{*,j})/||P_i||_2||P_j||_2 = ((V_{*,i}^TV)*V^TV_{*,j})/||P_i||_2||P_j||_2 = (V_{*,j}^TV^T*VV_{*,i})/||P_i||_2||P_j||_2 = V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2$
 
-Note that since $P=V^TV \implies \forall x: x^TPx \ge 0 \implies \theta_{x,Px} \le \pi/2$ (i.e. P is positive semi-definite)
-Naive assumption: $0 \le \theta_{x,y} \le \pi/2 \implies E(\theta_{x,y})=\pi/4$
+Note that since $P=V^TV \implies \forall x: x^TPx \ge 0 \implies \theta_{x,Px} \le \pi/2$[@semi-def] (i.e. P is positive semi-definite).
 
-This is the bulk of the proof we've shown that the numerators are the same save a positive definite transformation. All that remains is consideration of offset  angle summation.
+Naive assumption: $0 \le \theta_{V_{*,i},PV_{*,i}} \le \pi/2 \implies E(\theta_{V_{*,i},PV_{*,i}})=\pi/4$
 
-<!-- TODO: check this!! -->
+This is the bulk of the proof we've shown that the numerators are the same save a positive definite transformation. All that remains is consideration of offset angle summation.
+
 Lemma 3:
-$\theta_d = \theta_{V_{*,i}-V_{*,j},V_{*,i}-PV_{*,i}}$ (i.e. the angle between the two offset/difference vectors between $V_{*,j}$ and $V_{*,i}$, and $V_{*,i}$ and $PV_{*,i}$ respectively)
+Naive assumption: $E(\theta_{V_{*,j}, V_{*,i}}| cos(\theta_{V_{*,j}, V_{*,i}})>0) = E(\theta_{V_{*,j}, V_{*,i}}|0\le\theta_{V_{*,j}, V_{*,i}}<\pi/2) = \pi/4$
 
 <!-- TODO: use cos() again as c() and check it is correct -->
-$\exists c(\theta_d), -1\le c(\theta_d)\le1: \theta_{V_{*,j}, PV_{*,i}} = \theta_{V_{*,j}, V_{*,i}} + c(\theta_d)\theta_{V_{*,i},PV_{*,i}}$ (i.e. whether offset vectors are additive depends on angle between them)
-Also naturally if the vectors are orthognal the the second one does not contribute to the total offset angle $\theta_{V_{*,j}, PV_{*,i}}$. Therefore $c(\pi/2) = 0$.
+Note that: $\exists C, -1\le C\le1: \theta_{V_{*,j}, PV_{*,i}} = \theta_{V_{*,j}, V_{*,i}} + C\theta_{V_{*,i},PV_{*,i}}$ (i.e. degree to which offset angles are additive varies (from -1 to 1) based on the angle between the offset vectors).
 
-Naive assumption: $0\le\theta_d\le\pi \implies E(\theta_d) = \pi/2$
-$E(\theta_d) = \pi/2 \implies E(\theta_{V_{*,i},PV_{*,i}}) = E(\theta_{V_{*,j}, V_{*,i}}) + E(\theta_{V_{*,i},PV_{*,i}})*E(c(\theta_d)) = E(\theta_{V_{*,j}, V_{*,i}}) = \pi/4$
+Naive assumption: $-1\le C\le1 \implies E(C)=0$.
 
-Proof: 
-Lemma 3 $\implies E(cos(\theta_{V_{*,i}, PV_{*,i}})) = cos(\pi/4) \approx 0.7071068 > 0 \implies E(V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2) > 0$
-Lemma 2 $\implies E(V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2) = E((P_i^T*P_j)/||P_i||_2||P_j||_2) > 0$
+And therefore: $E(\theta_{V_{*,i},PV_{*,j}}) = E(\theta_{V_{*,j}, V_{*,i}}) + E(\theta_{V_{*,i},PV_{*,i}})*E(C)=E(\theta_{V_{*,j}, V_{*,i}})|E(C)=0$.
+
+<!-- Now lets assume that $E(\theta_{V_{*,j},PV_{*,i}}| cos(\theta_{V_{*,j}, V_{*,i}})>0) \ge \pi/2$ -->
+<!-- This implies that $E(\theta_{V_{*,i},PV_{*,i}}|cos(\theta_{V_{*,j}, V_{*,i}})>0)=\pi/2=\pi/4 + \pi/4 = E(\theta_{V_{*,j}, V_{*,i}}) + 1*E(\theta_{V_{*,i},PV_{*,i}}) =E(\theta_{V_{*,j}, V_{*,i}}) + E(C)*E(\theta_{V_{*,i},PV_{*,i}}) \implies E(C)=1 \implies P(C\neq1)=0$. -->
+<!-- Now we've reached a contradiction because we know that the offset vectors do not have to point in the same direction since their directions are random. -->
+
+<!-- $\theta_d = \theta_{V_{*,i}-V_{*,j},V_{*,i}-PV_{*,i}}$ (i.e. the angle between the two offset/difference vectors between $V_{*,j}$ and $V_{*,i}$, and $V_{*,i}$ and $PV_{*,i}$ respectively) -->
+
+<!-- Also naturally if the vectors are orthognal the the second one does not contribute to the total offset angle $\theta_{V_{*,j}, PV_{*,i}}$. Therefore $c(\pi/2) = 0$. -->
+
+<!-- Naive assumption: $0\le\theta_d\le\pi \implies E(\theta_d) = \pi/2$ -->
+<!-- $E(\theta_d) = \pi/2 \implies E(\theta_{V_{*,i},PV_{*,i}}) = E(\theta_{V_{*,j}, V_{*,i}}) + E(\theta_{V_{*,i},PV_{*,i}})*E(c(\theta_d)) = E(\theta_{V_{*,j}, V_{*,i}}) = \pi/4$ -->
+
+Proof:
+
+Lemma 3 & Lemma 2 $\implies E(\theta_{V_{*,j},PV_{*,i}}| cos(\theta_{V_{*,j}, V_{*,i}})>0) = E(\theta_{V_{*,j}, V_{*,i}}| cos(\theta_{V_{*,j}, V_{*,i}})>0) = E(\theta_{V_{*,j}, V_{*,i}}|0\le\theta_{V_{*,j}, V_{*,i}}<\pi/2) = \pi/4$
+
+This gives us $E(cos(\theta_{V_{*,j},PV_{*,i}})| cos(\theta_{V_{*,j}, V_{*,i}})>0) = cos(E(\theta_{V_{*,j},PV_{*,i}}|cos(\theta_{V_{*,j}, V_{*,i}})>0)) = cos(\pi/4) > 0$.
+
+Recall  $Lemma _1\implies r(V_{*,i}, V_{*,j}) = cos(\theta_{V_{*,i}, V_{*,j}}) |E(V_{*,i})=E(V_{*,j})=0$
+Therefore: $$r(V_{*,i}, V_{*,j}) \approx cos(\theta_{V_{*,j}, V_{*,i}})>0 \implies E(cos(\theta_{V_{*,j},PV_{*,i}})) > 0 \implies E(V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2) = E(cos(\theta_{P_i,P_j})) > 0$$
+
+<!-- Lemma 2 $\implies E(cos(\theta_{V_{*,i}, PV_{*,i}})) = cos(\pi/4) \approx 0.7071068 > 0$ -->
+
+<!-- USE THESE: -->
+<!-- $\implies E(V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2) > 0$ -->
+<!-- Lemma 2 $\implies E(V_{*,j}^TPV_{*,i}/||P_i||_2||P_j||_2) = E((P_i^T*P_j)/||P_i||_2||P_j||_2) > 0$ -->
 
 <!-- TODO: justify this assumption with bayese theorem -->
-
 <!-- TODO: finish this proof! -->
+
+### Empirical Validation:
+```{r correlation_test}
+data = read_csv('./paper_data/correlation_testA_rps.csv') %>% 
+  select(-index)
+
+plot_data = data %>% mutate(names=paste0(name1, '/', name2)) %>% select(-name1,-name2) %>% filter(nchar(names)<10) %>% group_by(names) %>% summarise_all(mean) %>% ungroup %>% sample_n(25)
+
+# make dist_r & name_sim bar plot
+plot_data %>% select(names, dist_r, name_sim) %>%
+  rename(dimension_r=dist_r, name_similarity=name_sim) %>% pivot_longer(-names, names_to = 'correlation_metric') %>%
+  ggplot(aes(x=names)) + geom_col(aes(y=value, group=names, color=correlation_metric)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# # make dist_r & recoded_name_sim bar plot
+# plot_data %>% select(names, dist_r, recoded_name_sim) %>% pivot_longer(-names) %>%
+#   ggplot(aes(x=names)) + geom_col(aes(y=value, group=names, color=name)) + 
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#print(c("correlation of name_sim to dim_r:", cor.test(data$name_sim, data$dist_r)))
+# print(c("correlation of recoded_name_sim to dim_r:", cor(data$recoded_name_sim, data$dist_r)))
+```
+Now the assumptions we made are unlikely to be *exactly* true, but it is far more unlikely that they are so far off that we cannot assume in the general case that $E(cos(\theta_{P_i,P_j})|r(V_{*,i}, V_{*,j})>0) > 0$. And indeed we tested this against the data directly and found $r \approx 0.6714682$ and $p \approx 0 < 0.05$. The software we used actually gave us $p=0$ but this was clearly a rounding error. This test was performed on the raw embedding space before we applied hard max interpretability to show that the property is not dependent on it.
 
 ## Hard Max Interpretability Algorithm
 
-![soft vs true names plot not found!]()
+![](figures/true_vs_soft_names_plot.png)
 
-The problem with our algorithm at baseline is that although it can find the correct embeddings to represent existing embedding dimensions these embeddings don't necessarily (and in fact often don't in practice) correspond to real words. Then loss is introduced by translation back into natural language. Additionally the problem is compounded by the fact that since these embeddings don't correspond to words they also often don't correspond to word clusters and therefore example words that maximize this dimension are often borrowed from multiple nearby clusters.
+Above is an illustration of the difference vectors between the true embedding dimension names and the decoded names' vectors, we use PCA here to reduce dimensionality to 2. As you can see the baseline algorithm can find the name vectors but what the user sees in natural language is not exactly the representative of the answer the algorithm produced. Additionally it generally considered that baseline GloVe embedding dimensions are nearly uninterpretable to humans[@SEMCAT][@word-emb-uninterp]. Meaning even if we have their names it won't necessarily be of much use to us unless they are already interpretable dimensions.
+
+So the problem with our algorithm at baseline is that although it can find the correct embeddings to represent existing embedding dimensions these embeddings don't necessarily (and in fact often don't in practice) correspond to real words. Then loss is introduced by translation back into natural language. Additionally the problem is compounded by the fact that since these embeddings don't correspond to words they also often don't correspond to word clusters and therefore example words that maximize this dimension are often borrowed from multiple nearby clusters.
 
 So an ideal solution would be to find a transformation of the embeddings space $\tilde V=VH$ s.t. $\forall i: \tilde P_i \in \{\tilde V_i\}$, even if $H$ would introduce some error to word distances if it were low enough it would be tolerable for the sake of deriving interpretations.
 
@@ -116,64 +194,94 @@ Additionally it would be best if $\tilde P_i\tilde P_i^T \approx I$, this would 
 ### Greedy Orthogonal name selection:
 We decided to use a simple greedy algorithm to choose target dimension name embeddings $G$. The algorithm is as follows:
 
-$G_0 = V_i: i = argmax_i(||V_i||_\infty)$
-for (i=2..m) {
-$L_i = ||V_iG^T||_2: i=1..m$
-$m = argmin_i(L_i)$
-$G_i = V_m$
-}
+\begin{algorithm}[H]
+  \KwData{$V \subset R^{m,n}:=$vocab embedding matrix}
+  \KwResult{$G:=$greedy target names s.t. $GG^T \approx I$}
+  $G_0 = V_i: i = argmax_{1\le i\le m}(||V_i||_\infty)$\;
+  \For{$i \in \{2..n\}$} {
+    \For {$j \in \{1..m\}$} {
+      $L_j = ||V_jG^T||_2$\;
+    }
+    $l = argmin_{1\le j \le m}(L_j)$\;
+    $G_i = V_l$\;
+  }
+  \Return{G}
+  \caption{Greedy Orthogonal Dimension Name Selection}
+\end{algorithm}
 
 What we are doing is setting the first $G$ to the word embedding with the largest value in any dimension, assuming that when vectors most orthogonal to this are chosen they will lie nearly on top of an axis. We then proceed to check each candidate vector's similarity to each existing row of G and choose to minimize the L2 norm of this vector. That is because the L2 norm will prioritize minimization of the maximum similarity among existing vectors, but will also account for similarity to other vectors as well some degree. Then whichever candidate has the lowest loss L is chosen and added to G, and then the process continues until no more names are needed.
 
 ### Method for Name Setting Proof:
-Given our greedily chosen target name embeddings $G$ we need $(VH)^T$
-$\tilde V = VH$
+Given our greedily chosen target name embeddings $G$ we need a transform for V ($\tilde V = VH$) s.t. $\tilde G = \tilde P$ (i.e. it maps both $G$ and $P$ to the same matrix). *However* the transform should *not* be applied directly to $P$ we are transforming $V$ and $G \subset V \implies \tilde G=GH$, but $P=V^TV \implies \tilde P = (VH)^TVH$.
 
-$GH = \tilde P = \tilde V^T\tilde V=(VH)^T(VH) =H^TV^T(VH)$
-$(H^T)^{-1}GHH^{-1} = V^TV$
-$(H^T)^{-1}G = V^TV$
-$(H^T)^{-1} = V^TVG^{-1}$
-$H = ((V^TVG^{-1})^{-1})^T$
+Therefore:
+$$\tilde G=GH = \tilde P = \tilde V^T\tilde V=(VH)^T(VH) =H^TV^T(VH)$$
+$$(H^T)^{-1}GHH^{-1} = V^TV$$
+$$(H^T)^{-1}G = V^TV$$
+$$(H^T)^{-1} = V^TVG^{-1}$$
+$$H = ((V^TVG^{-1})^{-1})^T$$
 
-## Discussion:
-In this paper we demonstrate that word embedding dimensions do indeed have names which are already inherent in their structure. And that by reassigning those names to more useful ones. Notably roughly orthogonal names which correspond to real words. It can be extremely useful for interpreting the embedding space and for naming embeddings of other types of data given that the source data has named features. In particular this is quite useful for data summary visualizations which naturally benefit from low dimensionality and named dimensions. We also demonstrated that these dimension name embeddings benefit from intuitive properties like correlation between dimension embedding similarity and dimension correlation on average. We also were able to create a generalized algorithm to do this that worked purely on existing word embeddings of any kind. This makes our algorithm extremely scalable and versatile applying to a wide range of data visualization tasks as well as potentially semi-automated data simplification in a database setting. Lastly our algorithm could even be extended to automatic naming of hidden neurons in any neural network with all named input features. The total possible scope of the algorithm is enormous and is backed by formal proofs and empirical data.
+<!-- ### Discussion of Russian & Problem Paper -->
+<!-- Two papers that heavily influenced this work were [@russ] and [@SEMCAT]. The first demonstrated that GloVE embeddings have little human interpretability at baseline (almost none), and that transforming the embedding space to define corresponding embedding dimension names could be done and was very useful for aligning with human intuition. However it relied heavily on a rare dataset called SEMCAT which was limited in scope, and therefore did not scale well. The other paper Rotations and Interpretability of Word Embeddings: the Case of the Russian Language, defined a very intuitive interpretability score $interp_k(V) = \sum V_{i,k}V_{j,k}(Vi ·Vj)=(V^TVV^TV)_{k,k}$ (note that V=W in their paper) and demonstrated its properties under orthogonal transformations. Note that the idea behind this score is that it measures the degree to with agreement in a particular dimension correlates with agreement in word similarity. Their paper was very useful for deriving insights about the problem. And while we didn't use many of their equations directly they inspired some aspects of ours.  -->
 
 ## Data Visualization Demo:
 
 ### Dataset:
-Here we test our algorithm on a real data set to demonstrate its utility in a practical setting. Luckily we were able to find a dataset that is unique in that it actually has ideal PCs and names built in. The data is the economic world freedom dataset found on kaggle[3]. The data structure is such that there are 5 macro variables and as many constituent variables for each macro variable (from which macro variables are directly computed). Since we already know what a human expert has determined to be good summary variables we can compare them directly to the results of the algorithm.
+Here we test our algorithm on a real data set to demonstrate its utility in a practical setting. Luckily we were able to find a dataset that is unique in that it actually has ideal PCs and names built in. The data is the economic world freedom dataset found on kaggle[@EWF-data]. The data structure is such that there are 5 macro variables and as many constituent variables for each macro variable (from which macro variables are directly computed). Since we already know what a human expert has determined to be good summary variables we can compare them directly to the results of the algorithm.
 
 ### Methods:
-* We first scaled the dataframe so that PCA could work properly.
-* We defined the column embeddings as the rotation matrix of PCA.
-* Column embeddings were essentially given the same treatment as vocab embeddings were previously, each embedding vector was L2 normalized and then transformed using hard max interpretability. We found that using the hard max interpretability algorithm we invented on the column embeddings helped in interpretability of the resulting variables.
-* We also used hard max interpretability on the vocab embeddings naturally. Using it on both helped the most.
-* To get column name embeddings we tokenized each column name into words then formed a dtm from column names where each name was considered a document. Then we took dtm *dot* vocab_emb to transform into the word embedding space.
-* To get names of the new interpretable PCs we used the true naming algorithm with some modifications. This time we passed in the name embeddings to be transformed by the column embeddings. Then we took the similarity to each vocab embedding to find the closest word. Again we used hard max interpretability on the vocab embeddings.
+![Simplified Data Embedding Naming Algorithm](./figures/column naming algorithm.pdf)
 
-That is:
-$t(x) :=$ *tokenize* x: return set of words found in string x 
-$\breve H(x) :=$ *hard* max interpretability on x
-$\grave N, \grave V:=$ vector of column *names*, and *vocab* words respectively
-$N:=$ column *name* embeddings
-$D_{i,j} = \begin{cases} 1 &\mbox{if } \grave V_j \in t(\grave N_i) \\ 0 & \mbox{otherwise }  \end{cases} :=$ *document* term matrix of column names
-$C_i = C_i/||C_i||_2$
-$\tilde C = \breve H(C)$
-$\grave N = D\tilde V$
-$P = \tilde C^TN$
+\begin{algorithm}[H]
+  \KwData{$V \subset R^{m,n}:=$vocab embedding matrix, data $\subset R^{o,p}$, rank $\in Z^+$, 
+$\grave N \in R^p, \grave V \in R^m:=$ vector of column *names*, and *vocab* words respectively}
+  \KwResult{$P:=$ Data embedding dimension name embeddings}
+  $t(x) :=$ *tokenize* x: return set of words found in string x
+  
+  $\breve H(x) :=$ *hard* max interpretability on x
 
-### Justification:
-  Again we are maximizing the orthogonality of the embeddings of the embedding dimensions, this time of the columns of a dataframe. This minimizes the overlap between concepts reresented by each column embedding dimension, which of course is good if we would like to name them. Since the embeddings of the column data is capable of representing individual existing columns and the embedding dimensions themselves are replacement columns it is capable of representing them as well just as in the word embedding case.
+  $\forall i \in \{1..p\}, \forall j \in \{1..m\}, D_{i,j} = \begin{cases} 1 &\mbox{if } \grave V_j \in t(\grave N_i) \\ 0 & \mbox{otherwise } \end{cases} :=$ *document* term matrix of column names\;
+
+  $\forall j \in \{1..o\}, data_{*,j} = (data_{*,j}-mean(data_{*,j}))/||data_{*,j}||_2$\;
+
+  $U \sum C^T = svd(data)$\;
+  $C = [C_{*,1},...,C_{*,rank}]$\;
+  $\forall i \in \{1..p\}, C_i = C_i/||C_i||_2$\;
+
+  $\tilde C = \breve H(C)$\;
+  $\tilde V = \breve H(V)$\;
+
+  $N = D*\tilde V:=$ column *name* embeddings (bag of words method)\;
+
+  $P = \tilde C^TN$\;
+  
+  \Return{P}\;
+  \caption{Data Embedding Dimension Naming Algorithm}
+\end{algorithm}
+
+<!-- 1. We first normalized (centering and scaling) the data columns so that PCA could work properly. -->
+<!-- 1. We defined the column embeddings as the rotation matrix of PCA. -->
+<!-- 1. Column embeddings were essentially given the same treatment as vocab embeddings were previously, each embedding vector was L2 normalized (scaling only) and then transformed using hard max interpretability. We found that using the hard max interpretability algorithm we invented on the column embeddings helped in interpretability of the resulting variables. -->
+<!-- 1. We also used hard max interpretability on the vocab embeddings naturally. Using it on both helped the most. -->
+<!-- 1. To get column name embeddings we tokenized each column name into words then formed a dtm from column names where each name was considered a document. Then we took dtm *dot* vocab_emb to transform into the word embedding space. -->
+<!-- 1. To get names of the new interpretable PCs we used the true naming algorithm with some modifications. This time we passed in the name embeddings to be transformed by the column embeddings. Then we took the similarity to each vocab embedding to find the closest word. Again we used hard max interpretability on the vocab embeddings. -->
+
+### Reasoning:
+  At first glance this may seem inconsistent with how we named vocab embedding dimensions, and it is. If we were to reuse that method exactly we do actually get decent results, except the range of possible embedding names is restricted to existing column names. The result then becomes trivial at least in the case of PCA because each dimensions' name becomes the column name with the greatest contribution to that dimension. In other words it appears the vocab space becomes too limited to express names properly.
+
+  So instead: we are again maximizing the orthogonality of the embeddings of the embedding dimensions, this time of the columns of a dataframe. This minimizes the overlap between concepts reresented by each column embedding dimension, which of course is good if we would like to name them. Since the embeddings of the column data is capable of representing individual existing columns and the embedding dimensions themselves are replacement columns it is capable of representing them as well just as in the word embedding case.
 
 <!-- TODO: justify this better -->
 We normalized the column embedding vectors simply because we wanted greater consistency with how we handled vocab embeddings and normalization is generally beneficial in a wide variety of contexts. 
 
   With regards to the creation of $P = \tilde C^TN$ we can no longer treat the word embeddings ($N$ in this case) as the weight matrix with which to encode itself. Now instead real data is being encoded and we must simply encode the word embeddings which correspond to that data in a like manner. Indeed in addition to being intuitive this method gave us the best results.
 
-```{r, echo=T}
+```{r data_vis_demo}
+library(psych)
+library(psycho)
 short_hand = list(marg='marginal', gov='government', std='standard', ppl='people', reg='regulation')
 
-simplify_df = function(vocab_emb, df, rank, term_mat=.term_mat_choices) {
+simplify_df = function(vocab_emb, df, rank) {
   vocab = rownames(vocab_emb)
   PCA = prcomp(df, rank=rank, scale=T)
   
@@ -183,11 +291,9 @@ simplify_df = function(vocab_emb, df, rank, term_mat=.term_mat_choices) {
   
   # we can treat this just like a word embedding problem
   # the reason that 
-  col_emb = norm_emb(PCA$rotation)
+  col_emb = PCA$rotation %>% norm_emb()
   interp_col_emb = col_emb %>% hard_max_emb_interp()
   #compare_interp_scores(interp_col_emb)
-  
-  heatmap(interp_col_emb)
   
   # make DTM from column names
   # assumes no repeat words in colnames!
@@ -205,7 +311,8 @@ simplify_df = function(vocab_emb, df, rank, term_mat=.term_mat_choices) {
                           emb_weights=t(interp_col_emb))
   
   colnames(interp_col_emb) = rownames(PC_names)
-  View(get_maximal_examples(interp_col_emb))
+  heatmap(interp_col_emb, margins=c(7,7))
+  # View(get_maximal_examples(interp_col_emb))
   
   # VERIFIED TO WORK
   simple_df = scale(df) %*% interp_col_emb
@@ -213,35 +320,48 @@ simplify_df = function(vocab_emb, df, rank, term_mat=.term_mat_choices) {
   return(as_tibble(simple_df))
 }
 
-(simple_df = simplify_df(interp_vocab_emb, verbose_data, rank=5))
+simple_df = simplify_df(interp_vocab_emb, verbose_data, rank=5)
 
 # TODO: make this more expressive
 main_PCs = simple_df[,1:2]
-plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
+qplot(main_PCs[[1]], main_PCs[[2]],
      xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
+pairs.panels(simple_df)
 
+cat('Cross Correlation with Correct Answers:\n')
 cor(simple_df, abstract_data)
 ```
 
+These are extremely intuitive names for the principle components! It even discovered the name 'antitrust' automatically which refers to the laws passed in the united states to break up monopolies (i.e. some of the first business regulation to exist). Probably the most dubious name is 'rate' which is rather ambiguous, still there are many valid meanings for the name rate in this context (i.e. rate of economic growth or activity). Additionally it can be seen that the correlations with these automatically named principle components correlate roughly as expect with the 'true names' (which were created by the human expert who made this dataset). 
+
 ## Interpretability Scores:
 
-Note that for the standard metric we could not compute it exactly because we were using pretrained embeddings and therefore didn't have the corresponding term-cooccurrence matrix. So instead we approximated this using a matrix of cosine similarities between the relevant maximal vocab embeddings for each dimension.
+We use two different interpretability scores to evaluate our hard max interpretability algorithm. The scores measure the interpretability of the dimensions themselves and not the names assigned to them. One interpretability score is the one proposed by [@russ] and the other is the one that is used most often in the related topic modeling literature[@std-interp1][@std-interp2]. The standard score is computed like so: for each component the n most probable words are selected then for each pair of selected words a coocurrence measure such as PMI is computed. Then these values are averaged across all pairs of selected words and components.
 
-We use two different interpretability scores to evaluate our hard max interpretability algorithm. The scores measure the interpretability of the dimensions themselves and not the names assigned to them. One interpretability score is the one proposed by [1] and the other is the one that is used most often in the related literature[1][4]. For the standard metric most widely used, there is a significant increase in the mean and median of the score.
+Note that for the standard metric we could not compute it exactly because we were using pretrained embeddings and therefore didn't have the corresponding term-cooccurrence matrix. So instead we approximated this using a matrix of cosine similarities between the relevant maximal vocab embeddings for each dimension (mean shifted to be strictly positive).
 
 ### Baseline GloVe Embeddings:
-```{r}
-compare_interp_scores(vocab_emb)
-image.real(t(PC_names)%*%PC_names, 'P^TP')
+```{r baseline_interp}
+baseline_interp = compare_interp_scores(vocab_emb)
+image.real(t(PC_names)%*%PC_names)
 ```
 
 ### Hard Max Interpretability Embeddings:
-```{r}
-compare_interp_scores(interp_vocab_emb)
-image.real(t(interp_PC_names)%*%interp_PC_names, 'P^TP')
+```{r hard_max_interp}
+hard_max_interp = compare_interp_scores(interp_vocab_emb)
+image.real(t(interp_PC_names)%*%interp_PC_names)
 ```
 
-For the metric proposed in [1] our algorithm got a median that was higher and the plots demonstrate that our distribution of interpretability is desirable compared to the baseline. However we *did get a lower mean* interpretability score, surprisingly. That being said there could be a reasonable explanation for this below.
+```{r both_interp}
+baseline_interp = as_tibble(baseline_interp) %>% mutate(Embeddings_name='Baseline GloVe')
+hard_max_interp = as_tibble(hard_max_interp) %>% mutate(Embeddings_name='Hard Max GloVe')
+df = as_tibble(rbind(baseline_interp, hard_max_interp))
+
+boxplot(Zobnin_interpretability~Embeddings_name,df)
+boxplot(Standard_interpretability~Embeddings_name,df)
+```
+
+For the standard metric most widely used, there is a significant increase in the mean and median of the score. For the metric proposed in [@russ] our algorithm got a median that was higher and the plots demonstrate that our distribution of interpretability is desirable compared to the baseline. However we *did get a lower mean* interpretability score, surprisingly. That being said there could be a reasonable explanation for this below.
 
 Also note the marked difference in the $P^TP$ matrix images. It can clearly be seen that after our hard max algorithm $P$ (or rather $\tilde P$) becomes much closer to orthogonal given how closely $\tilde P^T\tilde P$ resembles the identity matrix.
 
@@ -252,18 +372,39 @@ Also note the marked difference in the $P^TP$ matrix images. It can clearly be s
 
 Despite this we do not currently require that $P_i = P_i/||P_i||_2$, in our work. That being said we tested how doing so would affect decoded embedding names and we didn't observe any changes.
 
-### Maximal Dimension Examples:
+## Survey Results:
 
-```{r maximal examples}
-get_maximal_examples(interp_vocab_emb)
+```{r maximal_examples}
+# sorted by accuracy for top & bottom info
+answer_dist1 = answer_dist %>% group_by(name) %>% mutate(accuracy=sum(n*correct)/sum(n)) %>% arrange(accuracy) %>% mutate(name_short=as_vector(map(strsplit(name, ','), ~paste0(paste(.x[1:3], collapse=','), '...'))))
+
+question_samples = sample(unique(answer_dist1$name), 9)#tail(unique(answer_dist$name),2)
+answer_dist1 %>% group_by(name) %>% ungroup %>% filter(name %in% question_samples) %>%
+  ggplot() + facet_wrap(~name_short, scale='free_x') + geom_col(aes(x=answer, y=n, color=correct)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylab('Counts')
 ```
 
-Here each column represents an embedding dimension and the rows are the top 5 words which have the highest values in that dimension (sorted in descending order). The name of each column is the name assigned to the embedding dimension by our algorithm. As you can see there is a clear coherent structure to each embedding dimension and the names assigned to the dimensions are sometimes so similar to the maximal examples that they themselves appear in the maximal examples.
+Here each column represents an embedding dimension and the rows are the top 5 words which have the highest values in that dimension (sorted in descending order). The name of each column is the name assigned to the embedding dimension by our algorithm. As you can see there is a noticable coherence to most embedding dimensions. And the names assigned to these embeddings are often the names which receive the most votes from human evaluators.
+
+### Correct Answer Ranking and Accuracy
+
+```{r survey_answer_ranking}
+answer_dist %>% filter(!tie) %>% filter(correct) %>% group_by(rank) %>% summarise(n=sum(n)) %>% ungroup %>% mutate(percent=n/sum(n)*100) %>% ggplot(aes(x=rank,y=percent)) + geom_col()
+answer_dist %>% filter(!tie) %>% mutate(percent=(n/sum(n))*100) %>% ggplot() +
+  geom_col(aes(x=rank, y=percent, fill=correct))
+```
+
+To evaluate the quality of our embedding dimension names we conducted a survey where 27 random dimensions, their names and their top 5 words (the words with the highest values in those dimensions) were evaluated by 157 random human participants. For each question we listed a dimension's top 5 words and then asked human evaluators to name the set given 5 choices where 1 was the name our algorithm selected and the rest were random. Then we measured accuracy based on the comparison of the answer with the most results to the name our algorithm gave. We also excluded any first place ties between our algorithms' answer and a random answer, since this is neither a positive nor a negative result (of which there were 3). There were no ties between our answer and a random one for any other rankings. This metric gave us **83% accuracy**! And for the negative examples the name given by *our algorithm was 2nd place 3/4s of the time*!
+
+We see this as very promising since as pointed out by James Surowiecki in his book the wisdom of crowds [@crowd-wisdom] a crowds' average decision or estimation is a far better than likely any individual could have made one their own. Following this argument the answer with the most votes for any given question is significantly more likely to be the 'true answer' to the question, than any answer given by an individual.
+<!-- TODO: reconsider angle? Maybe forcing it? -->
+
 
 ## Considering Word Embedding Integrity Post Transformation:
 
-```{r}
-cat('mean absolute cos sim difference:', cos_sim_diff(vocab_emb, interp_vocab_emb), '\n')
+```{r consine_sim_difference }
+set.seed(0)
+cat('Mean absolute cosine similarity difference:', cos_sim_diff(vocab_emb, interp_vocab_emb, 500), '.\n')
 ```
 
 Here we explore to degree to which the word embeddings similarities to one another have be perturbed by the hard max interpretability algorithm. The two scatter plots 'before' and 'after' H transform give a crude approximation of word embedding's points in hyperspace before and after. We created these plots using principle coordinate analysis which is analogous to PCA but directly attempts to preserve hyperspacial point distances in the lower dimensional representation (where in this case distance $=-cos(\theta_{x,y})$). It should be noted since this is a crude approxmiation you should mostly be attentive to the distances between words rather than their points in space, none the less it is an example of how word similarites might change under this transformation. We kept the sample size low to avoid plot bloat.
@@ -271,10 +412,4 @@ Here we explore to degree to which the word embeddings similarities to one anoth
 As can be seen in the distributional plots, in the extreme cases some word similarities have been affected by up to around 0.5 (excluding outliers). However the vast majority have an absolute difference $\le 0.2$, and indeed the mean is only 0.142986. So it although it should be noted that this algorithm can't make hard guarentees to the resulting quality of word embeddings, it shouldn't matter too much since for the large majority of words their embeddings are only slightly affected. 
 <!-- Especially since in an EDA context fast understanding is far more important than perfection. -->
 Also empiracle evaluation of the word embeddings post transformation are very promising, suggesting that word similarities remain mostly intact to human intuition.
-
-## Works Cited:
-1. Interpretability of Word Embeddings: the Case of the Russian Language[CITEME]
-1. Semantic Structure and Interpretability of Word Embeddings[CITEME]
-1. Economic World Freedom Dataset[CITEME]
-1. Reference to common use of std interp score[CITEME]
 
