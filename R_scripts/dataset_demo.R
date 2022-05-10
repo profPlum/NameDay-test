@@ -1,10 +1,9 @@
 .script.dir <- dirname(sys.frame(1)$ofile)
 setwd(.script.dir)
-
 library(tidyverse)
 source('emb_funcs.R')
 
-vocab_data = load_vocab_emb('../logs/com/vocab_emb_com.txt', '../logs/com/lexicon_com.csv',
+vocab_data = load_vocab_emb('../logs/vocab_emb.txt', '../logs/lexicon.csv',
                             vocab_only=F, english_only=T)
 vocab_emb = vocab_data$vocab_emb
 interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
@@ -24,6 +23,7 @@ names(verbose_data) = gsub('_', ' ', names(verbose_data))
 
 head(verbose_data)
 
+# short hand mapping to plain english
 short_hand = list(marg='marginal', gov='government', std='standard', ppl='people', reg='regulation')
 
 simplify_df = function(vocab_emb, df, rank) {
@@ -82,13 +82,13 @@ simplify_df = function(vocab_emb, df, rank) {
 }
 
 (simple_df = simplify_df(vocab_emb, verbose_data, rank=5))
-# 
-# # TODO: make this more expressive
-# main_PCs = simple_df[,1:2]
-# plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
-#      xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
-# 
-# cor(simple_df, abstract_data)
+
+# TODO: make this more expressive
+main_PCs = simple_df[,1:2]
+plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
+     xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
+
+cor(simple_df, abstract_data)
 # 
 # data = read_csv('~/Downloads/housing.csv') %>% clean_data()
 # simple_df = simplify_df(vocab_emb, data, rank=5)

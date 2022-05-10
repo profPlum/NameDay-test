@@ -1,10 +1,10 @@
 .script.dir <- dirname(sys.frame(1)$ofile)
 setwd(.script.dir)
+
 source('emb_funcs.R')
-
 library(tidyverse)
-library(qdapDictionaries)
 
+# Not currently used...
 get_integrous_PC_order = function(important_part_idx) {
   # incoherence measures how far the original indices were pushed back in order to be valid.
   # Or in other words how distorted the valid representation of parts is relative to original.
@@ -18,59 +18,6 @@ get_integrous_PC_order = function(important_part_idx) {
     as_vector %>% barplot(main='group integrity vs cohesion', xlab='integrity', ylab='cohesion')
   # NOTE: -1/n_parts creates the unbiased mean (which is biased based on similarity of words with themselves)
   return(most_integral_PC_indices)
-}
-
-generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
-                              english_only=F, low_freq_only=F) {
-  #stopifnot(!('PC1' %in% colnames(vocab_emb)))
-  vocab = rownames(vocab_emb)
-  weights = t(vocab_emb)
-  
-  if (exclude_PC_names) {
-    excluded_vocab = stemDocument(vocab) %in% stemDocument(colnames(vocab_emb))
-    weights[, excluded_vocab] = -Inf
-  }
-  
-  if ('abs_scores' %in% names(attributes(vocab_emb))) {
-    heatmap(vocab_emb)
-    important_parts_idx = apply(vocab_emb, -1, FUN=sort, index.return=T, decreasing=T) %>% map(~.x$ix)
-    
-    # weight vocab_emb by abstractness scores s.t. less abstract words are chosen as parts
-    vocab_emb = vocab_emb %>% scale %>% sweep(1, attr(vocab_emb, 'abs_scores'))
-    
-    # sort offset plots (how did abs scores change ordering?)
-    vocab_emb_sort_offset = important_parts_idx %>% map2(1:dim(vocab_emb)[2], ~vocab_emb[,.y][.x]) %>%
-      reduce(cbind)
-    image(vocab_emb_sort_offset)
-    heatmap(vocab_emb)
-    hist(attr(vocab_emb, 'abs_scores'))
-  }
-  
-  # we want to reduce the columns dimensions (dim=2) & sort int is like np.argsort()
-  important_parts_idx = apply(weights, -2, FUN=sort, index.return=T, decreasing=T) %>% map(~.x$ix)
-  
-  # clean parts:
-  clean = 1:length(vocab)  # until told otherwise everything is 'clean'
-  if (english_only) {
-    is_english = vocab %in% GradyAugmented
-    print(c('mean portion of words in english: ', mean(is_english)))
-    is_english = which(is_english)
-    clean = intersect(clean, is_english)
-  }
-  if (low_freq_only) {
-    # why *2?
-    dtm = important_parts_idx %>% map(~{r=rep(0, length(vocab)); r[.x[1:n_parts*2]]=1; r}) %>% reduce(rbind)
-    freqs = dtm %>% apply(-1, FUN=sum)  # word counts
-    low_freq = which(freqs <= (mean(freqs)+sd(freqs)))
-    # ^ anything greater than 1 *standard deviation* above the mean is too high (hence the name)
-    
-    clean = intersect(clean, low_freq)
-  }
-  
-  important_parts = important_parts_idx %>% map(~intersect(.x, clean)) %>% #walk(~print(c('remaining indices: ',.x))) %>% 
-    map(~vocab[.x[1:n_parts]])
-  
-  return(important_parts)
 }
 
 display_important_parts = function(important_parts, lexicon,  num=10, use_definitions=T, interactive=F) {
@@ -182,3 +129,34 @@ do_name_survey = function(vocab_emb, lexicon=rownames(vocab_emb),
     print(c('answer key:', results$answer_key))
   }
 }
+
+
+#################### Make Survey ####################
+
+reload = T
+
+if (!exists('vocab_emb') || reload) {
+  # vocab_emb_data = load_corpus('./data/Joseph-Conrad-Chance.txt', './logs/lexicon_conrad.csv', 500,
+  #                          extra_stop_words=extra_stop_words, term_mat = 'tcm', use_cache=F)
+  vocab_emb_data = load_vocab_emb('./logs/vocab_emb.txt', './logs/com/lexicon.csv',
+                                  english_only=T, defined_only=F)
+  dtm = vocab_emb_data$dtm
+  lexicon = vocab_emb_data$lexicon
+  vocab_emb = norm_emb(vocab_emb_data$vocab_emb)
+}
+
+#vocab_emb = simplest_forms(vocab_emb)
+
+# b4 & after comparison with max interp scores
+compare_interp_scores(vocab_emb, dtm)
+interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
+print(c('mean cos diff :', mean_cos_sim_diff(vocab_emb, interp_vocab_emb)))
+compare_interp_scores(interp_vocab_emb, dtm)
+
+PC_names = get_PC_names(interp_vocab_emb)
+colnames(interp_vocab_emb) = rownames(PC_names)
+maximal_examples = get_maximal_examples(interp_vocab_emb)
+
+do_name_survey(interp_vocab_emb, lexicon, n_centers=1, interactive=F, use_definitions=F, n_questions = 27)
+
+##################################################

@@ -1,13 +1,13 @@
+.script.dir <- dirname(sys.frame(1)$ofile)
+setwd(.script.dir)
 library(tm)
 library(tokenizers)
 library(tidyverse)
 library(qdapDictionaries)
 library(moments)
-library(here)
 
 generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
-                              english_only=F, low_freq_only=F) {
-  #stopifnot(!('PC1' %in% colnames(vocab_emb)))
+                              low_freq_only=F) {
   vocab = rownames(vocab_emb)
   weights = t(vocab_emb)
   
@@ -36,12 +36,6 @@ generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
   
   # clean parts:
   clean = 1:length(vocab)  # until told otherwise everything is 'clean'
-  if (english_only) {
-    is_english = vocab %in% GradyAugmented
-    print(c('mean portion of words in english: ', mean(is_english)))
-    is_english = which(is_english)
-    clean = intersect(clean, is_english)
-  }
   if (low_freq_only) {
     # why *2?
     dtm = important_parts_idx %>% map(~{r=rep(0, length(vocab)); r[.x[1:n_parts*2]]=1; r}) %>% reduce(rbind)
@@ -52,7 +46,7 @@ generate_part_sets = function(vocab_emb, n_parts=5, exclude_PC_names=T,
     clean = intersect(clean, low_freq)
   }
   
-  important_parts = important_parts_idx %>% map(~intersect(.x, clean)) %>% #walk(~print(c('remaining indices: ',.x))) %>% 
+  important_parts = important_parts_idx %>% map(~intersect(.x, clean)) %>%
     map(~vocab[.x[1:n_parts]])
   
   return(important_parts)
@@ -244,12 +238,9 @@ get_PMI = function(TCM, positive=T) {
 # interp_scores made conventional in topic modeling
 # :param sim_mat: measures similarity/cooccurrence between words (PMI is recommended)
 standard_interp_scores = function(vocab_emb, n=5, dtm=NULL) {
-  if (!(exists('generate_part_sets')))
-    source(here('survey.R'))
-  
   vocab = rownames(vocab_emb)
   stopifnot(!('abs_scores' %in% names(attributes(vocab_emb))))
-  top_parts = generate_part_sets(vocab_emb, n, exclude_PC_names = F, english_only=F)
+  top_parts = generate_part_sets(vocab_emb, n, exclude_PC_names = F)
   
   # don't make full sim mat
   all_parts <- embed(as_vector(top_parts), vocab_emb)

@@ -2,7 +2,7 @@
 setwd(.script.dir)
 
 library(tidyverse)
-data = read_csv('./paper_data/correlation_testA_rps.csv') %>% 
+data = read_csv('./logs/correlation_test.csv') %>% 
   select(-index)
 
 summary(data)
