@@ -42,7 +42,10 @@ class Embedder:
         self.reset_vocab()
         self._original_vocab = (self.dataset.vocab, self.vocab_embeddings)
 
-        whitelist_mask = np.isin(self.dataset.vocab, set(whitelist_vocab))
+        whitelist_set = set(whitelist_vocab)
+        whitelist_mask = np.array([word in whitelist_set for word in self.dataset.vocab])
+
+        #whitelist_mask = np.isin(self.dataset.vocab, whitelist_vocab)
         self._vocab_embeddings = self._vocab_embeddings[whitelist_mask]
         self._dataset._vocab = np.array(self.dataset.vocab)[whitelist_mask]
 
