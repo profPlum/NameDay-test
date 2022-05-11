@@ -1,5 +1,8 @@
-.script.dir <- dirname(sys.frame(1)$ofile)
-setwd(.script.dir)
+if (!is.null(sys.frame(1)$ofile)) {
+  .script.dir <- dirname(sys.frame(1)$ofile)
+  setwd(.script.dir)
+}
+
 library(tm)
 library(tokenizers)
 library(tidyverse)
@@ -79,7 +82,7 @@ hard_max_emb_interp = function(vocab_emb) {
   return(norm_emb(vocab_emb))
 }
 
-cos_sim_diff = function(V, O, sample_sz=200) {
+cos_sim_diff = function(V, O, sample_sz=200, titles=T) {
   cos_sim_plot = function(V, n_plot, title=NULL) {
     cos_sims_V = V%*%t(V)
     cos_sims_plot = cos_sims_V[1:n_plot, 1:n_plot]
@@ -97,13 +100,14 @@ cos_sim_diff = function(V, O, sample_sz=200) {
   V = V[ids,]
   
   n_plot = 10
-  cos_sims_V = cos_sim_plot(V, n_plot)
-  cos_sims_O <- cos_sim_plot(O, n_plot)
+  
+  cos_sims_V = cos_sim_plot(V, n_plot, title=if_else(titles, 'Before H Transform', NULL))
+  cos_sims_O <- cos_sim_plot(O, n_plot, title=if_else(titles, 'After H Transform', NULL))
   
   cos_sim_differences = cos_sims_O - cos_sims_V
   dim(cos_sim_differences) = NULL
-  ##hist(cos_sim_differences)
-  boxplot(cos_sim_differences)
+  #hist(cos_sim_differences)
+  boxplot(cos_sim_differences, main=if_else(titles, 'Cosine Similarity Differences', NULL))
   return(mean(abs(cos_sim_differences)))
 }
 
@@ -294,13 +298,13 @@ get_vocab_emb = function(PCA, n_PCs, term_mat=.term_mat_choices, use_abs=F) {
 }
 
 # to get in +- pass abs(vocab_emb)
-get_maximal_examples = function(vocab_emb, use_abs=F) {
+get_maximal_examples = function(vocab_emb, n=6, use_abs=F) {
   vocab = rownames(vocab_emb)
   if (use_abs) vocab_emb = abs(vocab_emb)
   sort_ids = apply(vocab_emb, -1, sort, index.return=T) %>% map(~.x$ix)
   
   # tail because sort is increasing
-  maximal_examples = sort_ids %>% map(~vocab[tail(.x)]) %>% 
+  maximal_examples = sort_ids %>% map(~vocab[tail(.x,n=n)]) %>% 
     reduce(rbind) %>% t()
   colnames(maximal_examples) = colnames(vocab_emb)
   maximal_examples %>% View()

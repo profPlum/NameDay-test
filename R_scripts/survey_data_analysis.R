@@ -1,8 +1,10 @@
-.script.dir <- dirname(sys.frame(1)$ofile)
-setwd(.script.dir)
+if (!is.null(sys.frame(1)$ofile)) {
+  .script.dir <- dirname(sys.frame(1)$ofile)
+  setwd(.script.dir)
+}
 library(tidyverse)
 
-survey_data = read_csv('./paper_data/Word Set Naming Task.csv')
+survey_data = read_csv('../data/Word Set Naming Task.csv')
 survey_data = survey_data[-1,]
 
 answer_key = c("chagrin", "ascended", "unforeseen", "morgue", "jerome", "bliss",
@@ -47,5 +49,5 @@ answer_dist = answer_dist %>% group_by(name) %>% mutate(accuracy=sum(n*correct)/
 question_samples = sample(unique(answer_dist$name), 9)#tail(unique(answer_dist$name),2)
 answer_dist %>% group_by(name) %>% ungroup %>% filter(name %in% question_samples) %>%
   ggplot() + facet_wrap(~name_short, scale='free_x') + geom_col(aes(x=answer, y=n, color=correct)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylab('Counts')
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylab('Counts') + ggtitle('Sample Question Answer Distributions')
 

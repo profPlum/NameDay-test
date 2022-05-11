@@ -1,9 +1,11 @@
-.script.dir <- dirname(sys.frame(1)$ofile)
-setwd(.script.dir)
+if (!is.null(sys.frame(1)$ofile)) {
+  .script.dir <- dirname(sys.frame(1)$ofile)
+  setwd(.script.dir)
+}
 
 library(tidyverse)
-data = read_csv('./logs/correlation_test.csv') %>% 
-  select(-index)
+data = read_csv('../logs/correlation_test.csv') %>% 
+  select(-X1)
 
 summary(data)
 

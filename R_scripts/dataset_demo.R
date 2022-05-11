@@ -1,7 +1,12 @@
-.script.dir <- dirname(sys.frame(1)$ofile)
-setwd(.script.dir)
+if (!is.null(sys.frame(1)$ofile)) {
+  .script.dir <- dirname(sys.frame(1)$ofile)
+  setwd(.script.dir)
+}
+
 library(tidyverse)
-source('emb_funcs.R')
+debugSource('emb_funcs.R')
+
+clean_data = function(data) data %>% na.exclude() %>% select_if(is.numeric) %>% rename_all(~gsub('_',' ',.x))
 
 vocab_data = load_vocab_emb('../logs/vocab_emb.txt', '../logs/lexicon.csv',
                             vocab_only=F, english_only=T)
@@ -26,23 +31,25 @@ head(verbose_data)
 # short hand mapping to plain english
 short_hand = list(marg='marginal', gov='government', std='standard', ppl='people', reg='regulation')
 
-simplify_df = function(vocab_emb, df, rank) {
+simplify_df = function(vocab_emb, df, rank, short_hand=list()) {
   vocab = rownames(vocab_emb)
   PCA = prcomp(df, rank=rank, scale=T)
-  
+
   # df = t(one_hots), PCA$rotation = t(weights)
   # that is why there is left multiplication
   stopifnot(all.equal(scale(df) %*% PCA$rotation, PCA$x))
-  
+
   # we can treat this just like a word embedding problem
-  # the reason that 
+  # the reason that
   col_emb = PCA$rotation %>% norm_emb()
   interp_col_emb = col_emb %>% hard_max_emb_interp()
-  compare_interp_scores(interp_col_emb)
-  
-  heatmap(interp_col_emb)
-  
-  colname_vocab = colnames(df) %>% strsplit(' ') %>% map(~if_else(.x %in% names(short_hand), short_hand[.x], as.list(.x))) %>%
+  #compare_interp_scores(interp_col_emb)
+
+  # make DTM from column names
+  # assumes no repeat words in colnames!
+  # expand shorthand
+  colname_vocab = colnames(df) %>% strsplit(' ') %>%
+    map(~if_else(.x %in% names(short_hand), short_hand[.x], as.list(.x))) %>%
     map(as_vector)
   
   # make DTM from column names
@@ -55,33 +62,25 @@ simplify_df = function(vocab_emb, df, rank) {
   # NOTE: global assignment operator is necessary! You should switch back from = assignment to <- assignment
   colname_vocab %>% map(table) %>% walk2(1:nrow(colname_dtm), ~{colname_dtm[.y,names(.x)] <<- .x})
   stopifnot(any(colname_dtm>0))
-  print(any(colname_dtm>1))
-  
   # same format as vocab embeddings
   colname_emb = colname_dtm %*% vocab_emb
-  rownames(colname_emb) = colnames(df)
-
-  # PC_names = get_PC_names(interp_col_emb)
-  # PC_names = t(t(colname_emb) %*% interp_col_emb %*% PC_names)
-  # rownames(PC_names) = embed(PC_names, vocab_emb, reverse=T)
 
   # here colname_emb takes place of vocab_emb
   # and t(PCA$rotation)=W
-  # colname_vocab = colname_vocab %>% as_vector() %>% unique()
-  #vocab_emb = vocab_emb[rownames(vocab_emb) %in% colname_vocab,]
   PC_names = get_PC_names(colname_emb, vocab_emb = vocab_emb,
                           emb_weights=t(interp_col_emb))
-  
+
   colnames(interp_col_emb) = rownames(PC_names)
+  heatmap(interp_col_emb, margins=c(7,7))
   View(get_maximal_examples(interp_col_emb))
-  
+
   # VERIFIED TO WORK
   simple_df = scale(df) %*% interp_col_emb
   colnames(simple_df) = rownames(PC_names)
   return(as_tibble(simple_df))
 }
 
-(simple_df = simplify_df(vocab_emb, verbose_data, rank=5))
+(simple_df = simplify_df(interp_vocab_emb, verbose_data, rank=5, short_hand = short_hand))
 
 # TODO: make this more expressive
 main_PCs = simple_df[,1:2]
@@ -89,6 +88,4 @@ plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
      xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
 
 cor(simple_df, abstract_data)
-# 
-# data = read_csv('~/Downloads/housing.csv') %>% clean_data()
-# simple_df = simplify_df(vocab_emb, data, rank=5)
+
