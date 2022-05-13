@@ -1,10 +1,8 @@
-if (!is.null(sys.frame(1)$ofile)) {
-  .script.dir <- dirname(sys.frame(1)$ofile)
-  setwd(.script.dir)
-}
+install.packages('tidyverse', dependencies = T,
+                 repos='https://cran.rstudio.com/')
 library(tidyverse)
 
-survey_data = read_csv('../data/Word Set Naming Task.csv')
+survey_data = read_csv('./data/Word Set Naming Task.csv')
 survey_data = survey_data[-1,]
 
 answer_key = c("chagrin", "ascended", "unforeseen", "morgue", "jerome", "bliss",

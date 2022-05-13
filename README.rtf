@@ -1,0 +1,39 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset0 Menlo-Regular;\f2\fswiss\fcharset0 Helvetica-Oblique;
+\f3\fswiss\fcharset0 Helvetica-Bold;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red0\green0\blue0;\red255\green255\blue255;
+\red226\green228\blue230;}
+{\*\expandedcolortbl;;\csgray\c0;\cssrgb\c0\c1\c1;\cssrgb\c100000\c100000\c100000\c0;
+\cssrgb\c91014\c91410\c92133;}
+\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 This project is based largely in R so it is recommended that you execute the R code in Rstudio. That being said it should work from the commandline as well. To reproduce our results you first need to execute the command:\
+```bash\
+python 
+\f1\fs22 \cf2 \CocoaLigature0 write_vocab_data.py
+\f0\fs24 \cf0 \CocoaLigature1 \
+```\
+This will save the vocab embedding matrix and word lexicon to logs, as well as create the \'91true \'97> soft names plot\'92 (saved to logs). For our purposes \'91logs\'92 means any output data created by our programs, whereas \'91data\'92 means any data directly downloaded from the internet. Even though in practice some of the data in logs is actually directly derivative of data imported from the internet.\
+\
+From there you need to execute each R script 
+\f2\i except
+\f0\i0  emb_funcs.R, to view the corresponding results. You can do this using the source button in Rstudio or the bash command `Rscript R_scripts/SCRIPT_NAME`. \
+\
+NOTE ABOUT CORRUPT R PACKAGES:\
+You may experience errors loading the required R packages if your packages are corrupt. To solve this run `remove.packages(
+\f1\fs26 \cf3 \cb4 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec5 rownames(installed.packages()))` in R. Then the required packages will automatically be reinstalled.
+\f0\fs24 \cf0 \cb1 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 \
+\
+
+\f3\b Notes about make_survey.R
+\f0\b0 :\
+When you execute the make_survey.R script it won\'92t produce the survey in the format ready for dissemination to users instead it will create an interactive version of the survey for convenience and demo purposes. To create a survey for dissemination you turn the interactive flag off in the call to do_name_survey().\
+\
+That is:\
+```r\
+do_name_survey(interp_vocab_emb, lexicon, n_centers=1, interactive=F, use_definitions=T, n_questions = 27)\
+```\
+\
+Also note that you can remove the `n_questions=27` argument. That was used due to arbitrary budget constraints on survey software platform we were using. But it is left there to conform to the actual specifications of the survey that was used.}

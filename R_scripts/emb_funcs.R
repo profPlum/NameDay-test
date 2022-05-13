@@ -1,8 +1,5 @@
-if (!is.null(sys.frame(1)$ofile)) {
-  .script.dir <- dirname(sys.frame(1)$ofile)
-  setwd(.script.dir)
-}
-
+install.packages(c('tidyverse', 'tm','tokenizers','qdapDictionaries'),
+                 repos='https://cran.rstudio.com/')
 library(tm)
 library(tokenizers)
 library(tidyverse)

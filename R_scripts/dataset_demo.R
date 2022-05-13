@@ -1,19 +1,14 @@
-if (!is.null(sys.frame(1)$ofile)) {
-  .script.dir <- dirname(sys.frame(1)$ofile)
-  setwd(.script.dir)
-}
-
+source('R_scripts/emb_funcs.R')
 library(tidyverse)
-debugSource('emb_funcs.R')
 
 clean_data = function(data) data %>% na.exclude() %>% select_if(is.numeric) %>% rename_all(~gsub('_',' ',.x))
 
-vocab_data = load_vocab_emb('../logs/vocab_emb.txt', '../logs/lexicon.csv',
+vocab_data = load_vocab_emb('./logs/vocab_emb.txt', './logs/lexicon.csv',
                             vocab_only=F, english_only=T)
 vocab_emb = vocab_data$vocab_emb
 interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
 
-data = read_csv('../Data/efw_cc.csv') %>% na.exclude()
+data = read_csv('./Data/efw_cc.csv') %>% na.exclude()
 summary(data)
 
 # select only columns which are known members of more abstract columns
