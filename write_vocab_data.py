@@ -91,4 +91,4 @@ gensim_embedder.restrict_vocab(whitelist_vocab)
 
 np.savetxt('./logs/vocab_emb.txt', gensim_embedder.vocab_embeddings)
 write_lexicon(gensim_embedder.dataset.vocab, './logs/lexicon.csv')
-write_lexicon(gensim_embedder.auto_name()[0], './logs/PC_names.csv')
+#write_lexicon(gensim_embedder.auto_name()[0], './logs/PC_names.csv')
