@@ -17,7 +17,52 @@ get_integrous_PC_order = function(important_part_idx) {
   return(most_integral_PC_indices)
 }
 
-display_important_parts = function(important_parts, lexicon,  num=10, use_definitions=T, interactive=F) {
+#################### Load Data ####################
+
+reload = T
+
+if (!exists('vocab_emb') || reload) {
+  # vocab_emb_data = load_corpus('../data/Joseph-Conrad-Chance.txt', '../logs/lexicon_conrad.csv', 500,
+  #                          extra_stop_words=extra_stop_words, term_mat = 'tcm', use_cache=F)
+  vocab_emb_data = load_vocab_emb('./logs/vocab_emb.txt', './logs/lexicon.csv',
+                                  english_only=T, defined_only=F)
+  dtm = vocab_emb_data$dtm
+  lexicon = vocab_emb_data$lexicon
+  vocab_emb = norm_emb(vocab_emb_data$vocab_emb)
+}
+
+#vocab_emb = simplest_forms(vocab_emb)
+
+PC_names = get_PC_names(vocab_emb)
+interp_PC_names = get_PC_names(interp_vocab_emb)
+colnames(interp_vocab_emb) = rownames(interp_PC_names)
+colnames(vocab_emb) = rownames(PC_names)
+
+interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
+cat('Maximal examples of each dimension/PC of interpretable vocab embeddings:\n')
+maximal_examples = get_maximal_examples(interp_vocab_emb)
+
+##################### b4 & after H transform comparison #####################
+print(c('Mean cosine difference post H transform:', cos_sim_diff(vocab_emb, interp_vocab_emb)))
+
+cat('Interpretability scores of baseline:\n')
+baseline_interp = compare_interp_scores(vocab_emb)
+image.real(t(PC_names)%*%PC_names, 'P^TP matrix heatmap', sub='(P orthogonality test)')
+
+cat('Interpretability scores post H transform:\n')
+hard_max_interp = compare_interp_scores(interp_vocab_emb)
+image.real(t(interp_PC_names)%*%interp_PC_names, main='P^TP post-H matrix heatmap', sub='(P orthogonality test)')
+
+baseline_interp = as_tibble(baseline_interp) %>% mutate(Embeddings_name='Baseline GloVe')
+hard_max_interp = as_tibble(hard_max_interp) %>% mutate(Embeddings_name='Hard Max GloVe')
+df = as_tibble(rbind(baseline_interp, hard_max_interp))
+
+boxplot(Zobnin_interpretability~Embeddings_name,df, main='Zobnin Interpretability')
+boxplot(Standard_interpretability~Embeddings_name,df, main='Standard (PMI) Interpretability')
+
+############### Make Survey: ##################
+
+display_important_parts = function(important_parts, lexicon, num=10, use_definitions=T, interactive=F) {
   sample_ids = sample(length(important_parts), min(num,length(important_parts)))
   if (!use_definitions) lexicon = lexicon$Word
   
@@ -127,33 +172,7 @@ do_name_survey = function(vocab_emb, lexicon=rownames(vocab_emb),
   }
 }
 
-
-#################### Make Survey ####################
-
-reload = T
-
-if (!exists('vocab_emb') || reload) {
-  # vocab_emb_data = load_corpus('../data/Joseph-Conrad-Chance.txt', '../logs/lexicon_conrad.csv', 500,
-  #                          extra_stop_words=extra_stop_words, term_mat = 'tcm', use_cache=F)
-  vocab_emb_data = load_vocab_emb('./logs/vocab_emb.txt', './logs/lexicon.csv',
-                                  english_only=T, defined_only=F)
-  dtm = vocab_emb_data$dtm
-  lexicon = vocab_emb_data$lexicon
-  vocab_emb = norm_emb(vocab_emb_data$vocab_emb)
-}
-
-#vocab_emb = simplest_forms(vocab_emb)
-
-# b4 & after comparison with max interp scores
-compare_interp_scores(vocab_emb, dtm)
-interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
-print(c('mean cos diff :', cos_sim_diff(vocab_emb, interp_vocab_emb)))
-compare_interp_scores(interp_vocab_emb, dtm)
-
-PC_names = get_PC_names(interp_vocab_emb)
-colnames(interp_vocab_emb) = rownames(PC_names)
-maximal_examples = get_maximal_examples(interp_vocab_emb)
-
+cat('Making sample survey:\n')
 do_name_survey(interp_vocab_emb, lexicon, n_centers=1, interactive=F, use_definitions=T, n_questions = 27)
 
 ##################################################

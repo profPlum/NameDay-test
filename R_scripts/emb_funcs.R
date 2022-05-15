@@ -125,15 +125,18 @@ topn_similar = function(vocab_emb, words, n=10) {
   return(rownames(vocab_emb)[as_vector(top_ids)])
 }
 
-image.real = function(mat, main=NULL) image(t(mat)[,nrow(mat):1], main=main)
+# fixes base image() function to display the matrix without rotation
+image.real = function(mat, main=NULL, sub=NULL) image(t(mat)[,nrow(mat):1], main=main, sub=sub)
 
-compare_interp_scores = function(vocab_emb,  dtm=NULL) {
+compare_interp_scores = function(vocab_emb,  dtm=NULL, boxplots=F) {
   Zobnin_interpretability = vocab_emb %>% get_PC_interp_scores()
   Standard_interpretability = standard_interp_scores(vocab_emb, dtm=dtm)
-  cat('Mean Zobnin score: ', mean(Zobnin_interpretability), 'Mean Standard score:', mean(Standard_interpretability), '\n')
-  cat('Median Zobnin score: ', median(Zobnin_interpretability), 'Median Standard score:', median(Standard_interpretability), '\n')
-  # boxplot(russ_interp, main='Zobnin Interpretability')
-  # boxplot(std_interp, main='Standard Interpretability')
+  cat('Mean Zobnin score: ', mean(Zobnin_interpretability), 'Mean Standard (PMI) score:', mean(Standard_interpretability), '\n')
+  cat('Median Zobnin score: ', median(Zobnin_interpretability), 'Median Standard (PMI) score:', median(Standard_interpretability), '\n')
+  if (boxplots) {
+    boxplot(russ_interp, main='Zobnin Interpretability')
+    boxplot(std_interp, main='Standard (PMI) Interpretability')
+  }
   cat("Score correlation: ", cor(Zobnin_interpretability, Standard_interpretability), '\n')
   return(invisible(lst(Zobnin_interpretability, Standard_interpretability)))
 }

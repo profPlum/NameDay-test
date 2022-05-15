@@ -23,13 +23,13 @@ From there you need to execute each R script
 NOTE ABOUT CORRUPT R PACKAGES:\
 You may experience errors loading the required R packages if your packages are corrupt. To solve this run `remove.packages(
 \f1\fs26 \cf3 \cb4 \expnd0\expndtw0\kerning0
-\outl0\strokewidth0 \strokec5 rownames(installed.packages()))` in R. Then the required packages will automatically be reinstalled.
-\f0\fs24 \cf0 \cb1 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 \
+rownames(installed.packages()))` in R. Then the required packages will automatically be reinstalled.
+\f0\fs24 \cf0 \cb1 \kerning1\expnd0\expndtw0 \
 \
 
 \f3\b Notes about make_survey.R
 \f0\b0 :\
-When you execute the make_survey.R script it won\'92t produce the survey in the format ready for dissemination to users instead it will create an interactive version of the survey for convenience and demo purposes. To create a survey for dissemination you turn the interactive flag off in the call to do_name_survey().\
+You can set interactive=T in the call `do_name_survey(interp_vocab_emb, lexicon, n_centers=1, interactive=F, use_definitions=T, n_questions = 27)` to get an interactive version of the survey that can be used more easily by an individual (i.e. for demo rather than dissemination purposes).\
 \
 That is:\
 ```r\

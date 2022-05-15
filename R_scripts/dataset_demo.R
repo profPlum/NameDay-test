@@ -9,6 +9,7 @@ vocab_emb = vocab_data$vocab_emb
 interp_vocab_emb = vocab_emb %>% hard_max_emb_interp()
 
 data = read_csv('./Data/efw_cc.csv') %>% na.exclude()
+cat('Summary of economic word freedom dataset (unsimplified):\n')
 summary(data)
 
 # select only columns which are known members of more abstract columns
@@ -20,8 +21,6 @@ abstract_data = data[,abstract_cols]
 # change names to a format that our algorithm can use
 names(verbose_data) = gsub('\\d[a-z]?_', '', names(verbose_data))
 names(verbose_data) = gsub('_', ' ', names(verbose_data))
-
-head(verbose_data)
 
 # short hand mapping to plain english
 short_hand = list(marg='marginal', gov='government', std='standard', ppl='people', reg='regulation')
@@ -75,12 +74,14 @@ simplify_df = function(vocab_emb, df, rank, short_hand=list()) {
   return(as_tibble(simple_df))
 }
 
-(simple_df = simplify_df(interp_vocab_emb, verbose_data, rank=5, short_hand = short_hand))
+cat('Summary of economic word freedom dataset (simplified):\n')
+simple_df = simplify_df(interp_vocab_emb, verbose_data, rank=5, short_hand = short_hand)
+summary(simple_df)
 
-# TODO: make this more expressive
 main_PCs = simple_df[,1:2]
-plot(main_PCs[[1]], main_PCs[[2]], main='simple PC plot',
+plot(main_PCs[[1]], main_PCs[[2]], main='Simple PC Example Plot',
      xlab=names(main_PCs)[[1]], ylab=names(main_PCs)[[2]])
 
+cat("Cross correlations of simplified dataframe and human engineered macro/summary variables:\n")
 cor(simple_df, abstract_data)
 

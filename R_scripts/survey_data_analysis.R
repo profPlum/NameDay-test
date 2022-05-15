@@ -36,9 +36,9 @@ stopifnot(length(unique(answer_dist$name))*5==length(answer_dist$name))
 answer_dist %>% filter(!tie) %>% mutate(percent=(n/sum(n))*100) %>% ggplot() +
   geom_col(aes(x=rank, y=percent, fill=correct)) + ggtitle('Rank Distributions of All Answers')
 
-answer_dist %>%  mutate(percent=(n/sum(n))*100) %>% mutate(percent=(n/sum(n))*100) %>% ggplot() +
-  geom_col(aes(x=rank_correct_first, y=percent, fill=correct)) +
-  ggtitle('Survey Answer Distribution Plot')
+# answer_dist %>%  mutate(percent=(n/sum(n))*100) %>% mutate(percent=(n/sum(n))*100) %>% ggplot() +
+#   geom_col(aes(x=rank_correct_first, y=percent, fill=correct)) +
+#   ggtitle('Survey Answer Distribution Plot')
 
 # sorted by accuracy for top & bottom info
 answer_dist = answer_dist %>% group_by(name) %>% mutate(accuracy=sum(n*correct)/sum(n)) %>% arrange(accuracy) %>% 
