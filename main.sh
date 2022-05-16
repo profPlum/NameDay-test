@@ -4,6 +4,10 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR
 
+# condo has interfered with this before
+conda deactivate
+conda deactivate
+
 pip install -r requirements.txt
 python write_vocab_data.py
 #Rscript -e "install.packages(c('tidyverse', 'tm','tokenizers','qdapDictionaries'),
